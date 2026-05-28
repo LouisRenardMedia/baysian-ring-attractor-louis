@@ -20,8 +20,8 @@ kappa_ = [1.]
 circle_history = deque(maxlen=5)
 N = 30
 kappa_v = 0.5
-kappa_fi = 10.0
-kappa_z = 0.5
+kappa_fi = 5.0
+kappa_z = 1
 tau = 1.0
 I_ext = 0
 sigma_N = 0
@@ -105,7 +105,7 @@ def kalman_step(mu, kappa, kappa_phi, z=z, dy=dy, dt=dt, k_z=kappa_z, k_v=kappa_
 
 def generate_frames():
     dy0= 0.0001
-    prev_angle = 0
+    prev_angle = np.inf
     dt_last_circle = dt
 
     while True:
@@ -154,7 +154,7 @@ def generate_frames():
         recent_circles = [c for c in circle_history if len(c) > 0]
         #r,W_even, W_odd,M,f_act,w_quad,dW,M, f_act = initialiaze_rnn(N,kappa_fi,kappa_v,phi_0)
         
-        if len(recent_circles) >= 2:
+        if len(recent_circles) >= 3:
             if USE_SMOOTHING:
                 display_circles = get_smoothed_circle(recent_circles)
             else:
@@ -166,7 +166,7 @@ def generate_frames():
 
                 
                 #print("before",prev_angle)
-                if prev_angle != 0.0:
+                if prev_angle != np.inf:
                     dy = (prev_angle-angle)
                     #r,mean, kappa = step(r,dy,z,dt,W_even, W_odd,w_quad,dW,M,f_act)
                     mean, kappa = kalman_step(mean_[-1],kappa_[-1],kappa_fi,z=angle,dy=dy, dt=dt_last_circle, k_z=kappa_z, k_v=kappa_v)
@@ -315,7 +315,7 @@ def get_smoothed_circle(recent_circles):
     """
     if not recent_circles:
         return None
-    all_circles = np.concatenate(recent_circles, axis=0)
+    all_circles = np.concatenate(recent_circles)
     avg_x      = int(np.mean(all_circles[:, 0]))
     avg_y      = int(np.mean(all_circles[:, 1]))
     avg_radius = int(np.mean(all_circles[:, 2]))
@@ -324,7 +324,7 @@ def get_smoothed_circle(recent_circles):
 
 def calc_angle(x):
     
-    y = (float(x)-500)*9/25
+    y = (float(x)-650)*18/65
     return np.radians(y)
     
 @app.route('/')
