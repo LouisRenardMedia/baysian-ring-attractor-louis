@@ -4,11 +4,14 @@ from flask import Flask, Response
 import cv2
 import numpy as np
 from collections import deque
+from angle_utils import calc_angle
 
 from scipy.spatial.distance import euclidean
-
 from start_cam import UnwarpCamera
+import Baysian_Ring_Attractor
+
 import Circular_Kalman_Filter
+
 from circularFiltering import vM_Projection
 import robot_toy
 
@@ -19,17 +22,13 @@ cam = UnwarpCamera()
 USE_SMOOTHING = True    # Toggle on or off for circle position averaging over history
 MODE = "RNN"
 
-mean_ = [0.]            # Innitialize position to 0
-activations_ = []
-kappa_ = [1.]           # Innitialize certainty to 1
-
 # Buffer to make detection stable
 circle_history = deque(maxlen=5)
 
 N = 30                      # Neuron count
-kappa_v = 5              # certainty of angular velocity input
-kappa_fi = 5.0              # Diffusion parameter (inverse so high number is low diffusion)
-kappa_z = 10                 # Certainty of HD input
+k_v = 5              # certainty of angular velocity input
+kappa_phi = 5.0              # Diffusion parameter (inverse so high number is low diffusion)
+k_z = 10                 # Certainty of HD input
 tau = 0.5
 I_ext = 0
 sigma_N = 0
@@ -45,94 +44,15 @@ phi_0_r = None
 dt=1/30             # 1/fps
 
 
-#### calculated params #####
-w_asym = kappa_v / (kappa_fi + kappa_v)
-w_sym = 1/tau
-
-def RNN_init():
-
-    # vector of preferred HD
-    phi = np.linspace(-np.pi, np.pi - (2 * np.pi) / N, N)
-
-    # Set up weight matrix
-    diff = phi[:, None] - phi[None, :]  # shape (N, N)
-    W_sym = w_sym * (2 / N) * np.cos(diff)
-    W_asym = (2 / N) * np.sin(diff) * w_asym
-    W_const = 1 / N * np.ones((N, N)) * w_const
-
-    # init
-    r.append(kappa_0 * np.cos(phi - phi_0))
-
-    return phi, W_sym, W_asym, W_const
-
-
-
-
-
-def RNN_step(phi, dt=dt,
-                   W_sym=0, W_asym=0, W_const=0, w_quad=w_quad,
-                    stoch_corr=stoch_corr, dy=0, z=0, k_z=0):
-    """" Runs a recurrent neural network dynamics, with parameters matched to
-    approximate the circKF.
-
-    Input:
-    dt          - time step
-    w_sym      - even recurrent connectivity
-    w_asym       - odd recurrent connectivity
-    tau         - decay time constant
-    w_quad      - quadratic weight
-    stoch_corr  - stochastic correction (additional decay due to Ito conversion)
-    dy          - increment observation
-
-    Output:
-    mu      - mean estimate after update
-    kappa   - certainty estimate after update """
-
-    f_act = lambda x: np.maximum(0, x)
-
-    # set up all-to-all summation
-    M = np.pi / N * np.ones([N, N])
-
-    # add Wiener process if there is neural noise
-    # if sigma_N != 0:
-    #     dW = np.sqrt(dt) * np.random.randn(int(T / dt), N)
-    # else:
-    #     dW = np.zeros((int(T / dt), N))
-
-    # run network filter
-    W = W_sym + W_asym * (dy / dt) + W_const
-
-    r.append((r[-1]
-            - stoch_corr * r[-1] * dt  # stochastic correction
-            - 1 / tau * r[-1] * dt  # decay
-            + np.dot(W, r[-1]) * dt  # angular velocity integration, recurrent stabilization
-            - w_quad * np.dot(M, f_act(r[-1])) * r[-1] * dt  # quadratic inhibition
-            + k_z * dt * np.cos(phi - z)))  # absolute heading info (external input)
-            #+ sigma_N * dW[i]))
-
-    # decode stochastic variables
-    basis = np.array([np.cos(phi), np.sin(phi)])  # (2, N)
-
-    theta = (2 / N) * (basis @ r[-1])  # (2,)
-    # theta[0] = κ·cos(μ) and theta[1] = κ·sin(μ)
-
-    mu = np.arctan2(theta[1], theta[0])
-    kappa = np.linalg.norm(theta)
-
-    return mu, kappa
-
-
-
-
 def generate_frames():
     if MODE == "CKF":
-        filter = Circular_Kalman_Filter.CKF(kappa_fi,dt,kappa_z,kappa_v)
+        filter = Circular_Kalman_Filter.CKF(kappa_phi,dt,k_z,k_v)
     elif MODE == "RNN":
-        filter = 0
+        filter = Baysian_Ring_Attractor.Ring_Attractor(N, dt, tau, kappa_phi, k_v, k_z, w_const, w_quad, kappa_0, phi_0, stoch_corr)
 
     prev_angle = np.inf
     frames_since_detection = 1
-    phi, W_sym, W_asym, W_const = RNN_init()
+
 
     while True:
         success, frame = cam.read()
@@ -194,7 +114,7 @@ def generate_frames():
                 if MODE == "KF":
                     angle = filter.run_CircKF(prev_angle=prev_angle,frames_since_detection=frames_since_detection, c=c)
                 elif MODE == "RNN":
-                    angle = run_RNN(phi, W_sym,W_asym,W_const,prev_angle=prev_angle,frames_since_detection=frames_since_detection, c=c)
+                    angle = filter.run_RNN(prev_angle=prev_angle,frames_since_detection=frames_since_detection, c=c)
 
                 frames_since_detection = 1
                 prev_angle = angle
@@ -203,13 +123,13 @@ def generate_frames():
             if MODE == "KF":
                 filter.run_CircKF()
             elif MODE == "RNN":
-                run_RNN(phi, W_sym,W_asym,W_const)
+                filter.run_RNN()
 
             frames_since_detection += 1
 
         # HD indicator — top right corner
-        if len(mean_) > 1:
-            output = draw_hd_indicator(output, mean_[-1], kappa_[-1])
+        if len(filter.mu) > 1:
+            output = draw_hd_indicator(output, filter.mu[-1], filter.kappa[-1])
      ################ Robot looking for red ball #############
             # if mean_[-1]<-0.05:
             #     robot_toy._set_motors(-1600,1600)
@@ -233,28 +153,6 @@ def generate_frames():
             b'--frame\r\n'
             b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n'
         )
-
-def run_RNN(phi, W_sym, W_asym, W_const, prev_angle=None, frames_since_detection=1, c=None):
-    if c is not None:
-        angle = calc_angle(c[0])
-
-        if prev_angle != np.inf:
-            dy = (((prev_angle - angle) + np.pi) % (2 * np.pi) - np.pi) / frames_since_detection # Wrapped ngular displacement in last frame
-            mean, kappa = RNN_step(phi, dt,W_sym, W_asym, W_const, dy=dy, z=angle, k_z=kappa_z)
-
-        else:
-            mean, kappa = RNN_step(phi, dt,W_sym, W_asym, W_const)
-    else:
-
-        mean, kappa = RNN_step(phi, dt,W_sym, W_asym, W_const)
-        angle = None
-
-    mean_.append(mean)
-    kappa_.append(kappa)
-    return angle
-
-
-
 
 
 def draw_hd_indicator(frame, mean, kappa, size=80):
@@ -374,13 +272,6 @@ def get_smoothed_circle(recent_circles):
 
     return np.array([[avg_x_circ, avg_y, avg_radius]])
 
-#TODO check if pixels start at 0 or 1
-def calc_angle(x):
-    '''
-    calibrated to a 1300 pixel wide image, returns angle in radians (-pi,pi]
-    '''
-    y = (float(x)-650)*18/65
-    return np.radians(y)
     
 @app.route('/')
 def index():

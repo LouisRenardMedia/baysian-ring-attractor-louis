@@ -1,7 +1,7 @@
 import numpy as np
 
 from circularFiltering import vM_Projection
-from detect_red_circles import calc_angle
+from angle_utils import calc_angle
 
 
 class CKF:
@@ -54,3 +54,4 @@ class CKF:
         self.mu.append(mean)
         self.kappa.append(kappa)
         return angle
+
