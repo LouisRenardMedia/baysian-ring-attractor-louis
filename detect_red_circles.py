@@ -8,6 +8,7 @@ from collections import deque
 from scipy.spatial.distance import euclidean
 
 from start_cam import UnwarpCamera
+import Circular_Kalman_Filter
 from circularFiltering import vM_Projection
 import robot_toy
 
@@ -124,6 +125,10 @@ def RNN_step(phi, dt=dt,
 
 
 def generate_frames():
+    if MODE == "CKF":
+        filter = Circular_Kalman_Filter.CKF(kappa_fi,dt,kappa_z,kappa_v)
+    elif MODE == "RNN":
+        filter = 0
 
     prev_angle = np.inf
     frames_since_detection = 1
@@ -187,7 +192,7 @@ def generate_frames():
                 cv2.circle(output, center, 2, (0, 0, 255), 3)        # center dot
 
                 if MODE == "KF":
-                    angle = run_CircKF(prev_angle=prev_angle,frames_since_detection=frames_since_detection, c=c)
+                    angle = filter.run_CircKF(prev_angle=prev_angle,frames_since_detection=frames_since_detection, c=c)
                 elif MODE == "RNN":
                     angle = run_RNN(phi, W_sym,W_asym,W_const,prev_angle=prev_angle,frames_since_detection=frames_since_detection, c=c)
 
@@ -196,7 +201,7 @@ def generate_frames():
 
         else:
             if MODE == "KF":
-                run_CircKF()
+                filter.run_CircKF()
             elif MODE == "RNN":
                 run_RNN(phi, W_sym,W_asym,W_const)
 
