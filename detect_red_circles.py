@@ -4,7 +4,7 @@ from flask import Flask, Response
 import cv2
 import numpy as np
 from collections import deque
-from angle_utils import calc_angle
+import angle_utils
 
 from scipy.spatial.distance import euclidean
 from start_cam import UnwarpCamera
@@ -30,17 +30,14 @@ k_v = 5              # certainty of angular velocity input
 kappa_phi = 5.0              # Diffusion parameter (inverse so high number is low diffusion)
 k_z = 10                 # Certainty of HD input
 tau = 0.5
-I_ext = 0
+
 sigma_N = 0
-phi_0=0
+phi_0 = 0
 kappa_0 = 1
 w_const = 1
 w_quad = 0.2
 stoch_corr = 0
-r = deque(maxlen=5)
-z = None
-dy = None
-phi_0_r = None
+
 dt=1/30             # 1/fps
 
 
@@ -259,13 +256,13 @@ def get_smoothed_circle(recent_circles):
 
     all_circles = np.concatenate(recent_circles)
 
-    angles = np.array([calc_angle(c[0]) for c in all_circles])
+    angles = np.array([angle_utils.calc_angle(c[0]) for c in all_circles])
     avg_cos = np.mean(np.cos(angles))
     avg_sin = np.mean(np.sin(angles))
     avg_angle = np.arctan2(avg_sin, avg_cos)  # back to polar
 
     # Convert avg_angle back to a pixel x position
-    avg_x_circ = int(avg_angle * 65 / 18 * (180 / np.pi) + 650)
+    avg_x_circ = angle_utils.calc_position(avg_angle)
 
     avg_y      = int(np.mean(all_circles[:, 1]))
     avg_radius = int(np.mean(all_circles[:, 2]))

@@ -7,3 +7,6 @@ def calc_angle(x):
     '''
     y = (float(x) - 650) * 18 / 65
     return np.radians(y)
+
+def calc_position(angle):
+    return int(angle * 65 / 18 * (180 / np.pi) + 650)

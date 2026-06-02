@@ -17,11 +17,11 @@ class CKF:
 
 
 
-    def kalman_step(self, mu, kappa, z=0, dy=0, k_z=0, k_v=0):
+    def kalman_step(self, z=0, dy=0, k_z=0, k_v=0):
         '''
         compute single Euler–Maruyama step of Circular Kalman filter
         '''
-        return vM_Projection(mu, kappa, self.kappa_phi, z=z, dy=dy, dt=self.dt, kappa_z=k_z, kappa_v=k_v)
+        return vM_Projection(self.mu[-1], self.kappa[-1], self.kappa_phi, z=z, dy=dy, dt=self.dt, kappa_z=k_z, kappa_v=k_v)
 
     def run_CircKF(self, prev_angle=None, frames_since_detection=1, c=None):
         '''
@@ -41,14 +41,14 @@ class CKF:
             if prev_angle != np.inf:
                 dy = (((prev_angle - angle) + np.pi) % (2 * np.pi) - np.pi) / frames_since_detection  # Wrapped angular displacement in last frame
 
-                mean, kappa = self.kalman_step(self.mu[-1], self.kappa[-1], angle, dy, k_z=self.k_z, k_v=self.k_v)
+                mean, kappa = self.kalman_step(angle, dy, k_z=self.k_z, k_v=self.k_v)
 
             else:
-                mean, kappa = self.kalman_step(self.mu[-1], self.kappa[-1], k_v=0, k_z=0)
+                mean, kappa = self.kalman_step(k_v=0, k_z=0)
 
         else:
             # Setting k_v and k_z to 0 ignores any incoming information in the absence of a circle
-            mean, kappa = self.kalman_step(self.mu[-1], self.kappa[-1], k_v=0, k_z=0)
+            mean, kappa = self.kalman_step(k_v=0, k_z=0)
             angle = None
 
         self.mu.append(mean)
