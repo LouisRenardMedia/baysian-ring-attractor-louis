@@ -88,7 +88,8 @@ class Ring_Attractor:
         mu = np.arctan2(theta[1], theta[0])
         kappa = np.linalg.norm(theta)
 
-        return mu, kappa
+        self.mu.append(mu)
+        self.kappa.append(kappa)
 
     def run_RNN(self, prev_angle=None, frames_since_detection=1, c=None):
         if c is not None:
@@ -97,17 +98,14 @@ class Ring_Attractor:
             if prev_angle != np.inf:
                 dy = (((prev_angle - angle) + np.pi) % (
                             2 * np.pi) - np.pi) / frames_since_detection  # Wrapped ngular displacement in last frame
-                mean, kappa = self.RNN_step(dy=dy, z=angle)
+                self.RNN_step(dy=dy, z=angle)
 
             else:
-                mean, kappa = self.RNN_step()
+                self.RNN_step()
         else:
 
-            mean, kappa = self.RNN_step()
+            self.RNN_step()
             angle = None
-
-        self.mu.append(mean)
-        self.kappa.append(kappa)
 
         return angle
 
