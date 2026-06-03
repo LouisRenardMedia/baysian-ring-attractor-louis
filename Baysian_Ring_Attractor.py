@@ -28,12 +28,12 @@ class Ring_Attractor:
         self.r = []
 
         w_asym = k_v / (kappa_phi + k_v)
-        w_sym = 1 / tau
+        w_sym = 1 / tau + 1 / (kappa_phi + k_v)
 
 
 
         # vector of preferred HD
-        self.phi = np.linspace(-np.pi, np.pi - (2 * np.pi) / N, N)
+        self.phi = np.linspace(-np.pi, np.pi - (2 * np.pi) / N, N, endpoint=False)
 
         # Set up weight matrix
         diff = self.phi[:, None] - self.phi[None, :]  # shape (N, N)
@@ -119,7 +119,7 @@ class Ring_Attractor:
 
         return angle
 
-    def A_Bessel(kappa):
+    def A_Bessel(self, kappa):
         """Computes the ratio of Bessel functions."""
         r = i1(kappa) / i0(kappa)
         return r
