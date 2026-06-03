@@ -1,4 +1,6 @@
 import numpy as np
+from scipy.optimize import root_scalar
+from scipy.special import i0, i1
 from angle_utils import calc_angle
 
 class Ring_Attractor:
@@ -17,6 +19,8 @@ class Ring_Attractor:
         self.phi_0 = phi_0
         self.stoch_corr = stoch_corr
 
+        self.I_ext = self.xi_fun_inv(k_z * dt)
+
         self.mu = [phi_0]
         self.kappa = [kappa_0]
 
@@ -25,6 +29,7 @@ class Ring_Attractor:
 
         w_asym = k_v / (kappa_phi + k_v)
         w_sym = 1 / tau
+
 
 
         # vector of preferred HD
@@ -38,6 +43,7 @@ class Ring_Attractor:
 
         # init activities
         self.r.append(kappa_0 * np.cos(self.phi - phi_0))
+
 
 
     def RNN_step(self, dy=0, z=0):
@@ -71,13 +77,15 @@ class Ring_Attractor:
         # run network filter
         W = self.W_sym + self.W_asym * (dy / self.dt) + self.W_const
 
+
         self.r.append((self.r[-1]
                   - self.stoch_corr * self.r[-1] * self.dt  # stochastic correction
                   - 1 / self.tau * self.r[-1] * self.dt  # decay
                   + np.dot(W, self.r[-1]) * self.dt  # angular velocity integration, recurrent stabilization
                   - self.w_quad * np.dot(M, f_act(self.r[-1])) * self.r[-1] * self.dt  # quadratic inhibition
-                  + self.k_z * self.dt * np.cos(self.phi - z)))  # absolute heading info (external input)
+                  + self.I_ext * np.cos(self.phi - z)))  # absolute heading info (external input)
         # + sigma_N * dW[i]))
+
 
         # decode stochastic variables
         basis = np.array([np.cos(self.phi), np.sin(self.phi)])  # (2, N)
@@ -87,6 +95,8 @@ class Ring_Attractor:
 
         mu = np.arctan2(theta[1], theta[0])
         kappa = np.linalg.norm(theta)
+
+
 
         self.mu.append(mu)
         self.kappa.append(kappa)
@@ -108,4 +118,20 @@ class Ring_Attractor:
             angle = None
 
         return angle
+
+    def A_Bessel(kappa):
+        """Computes the ratio of Bessel functions."""
+        r = i1(kappa) / i0(kappa)
+        return r
+
+    def xi_fun_inv(self, dt):
+        """Computes the inverse of the ratio of Bessel functions by root-finding."""
+        f = lambda alpha: alpha * self.A_Bessel(alpha) - dt
+        sol = root_scalar(f, bracket=[0.001, 50], method='brentq')
+        alpha = sol.root
+        return alpha
+
+
+
+
 
