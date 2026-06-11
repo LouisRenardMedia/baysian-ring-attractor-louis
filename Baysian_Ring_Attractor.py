@@ -46,7 +46,7 @@ class Ring_Attractor:
 
 
 
-    def RNN_step(self, dy=0, z=0):
+    def RNN_step(self, dy=0, z=0, input=1):
         """" Runs a recurrent neural network dynamics, with parameters matched to
         approximate the circKF.
 
@@ -83,7 +83,7 @@ class Ring_Attractor:
                   - 1 / self.tau * self.r[-1] * self.dt  # decay
                   + np.dot(W, self.r[-1]) * self.dt  # angular velocity integration, recurrent stabilization
                   - self.w_quad * np.dot(M, f_act(self.r[-1])) * self.r[-1] * self.dt  # quadratic inhibition
-                  + self.I_ext * np.cos(self.phi - z)))  # absolute heading info (external input)
+                  + input * self.I_ext * np.cos(self.phi - z)))  # absolute heading info (external input)
         # + sigma_N * dW[i]))
 
 
@@ -111,10 +111,10 @@ class Ring_Attractor:
                 self.RNN_step(dy=dy, z=angle)
 
             else:
-                self.RNN_step()
+                self.RNN_step(input=0)
         else:
 
-            self.RNN_step()
+            self.RNN_step(input=0)
             angle = None
 
         return angle
