@@ -101,7 +101,7 @@ class Ring_Attractor:
         self.mu.append(mu)
         self.kappa.append(kappa)
 
-    def run_RNN(self, prev_angle=None, frames_since_detection=1, c=None):
+    def run_exp_step(self, prev_angle=None, frames_since_detection=1, c=None):
         if c is not None:
             angle = calc_angle(c[0])
 

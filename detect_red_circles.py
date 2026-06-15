@@ -21,7 +21,8 @@ cam = UnwarpCamera()
 #cam.start_stream(port=8080)
 
 USE_SMOOTHING = True    # Toggle on or off for circle position averaging over history
-MODE = "CKF"
+MODE = "CKF"            # "CKF" for circular kalman filter and "RNN" for baysian ring attractor
+ROBOT_TURN = False
 
 log_file = open('rnn_estimates.csv', 'w', newline='')
 log_writer = csv.writer(log_file)
@@ -31,9 +32,9 @@ log_writer.writerow(['timestamp', 'mu', 'kappa'])
 circle_history = deque(maxlen=5)
 
 N = 64                      # Neuron count
-k_v = 2              # certainty of angular velocity input
+k_v = 2                 # certainty of angular velocity input
 kappa_phi = 0.5              # Diffusion parameter (inverse so high number is low diffusion)
-k_z = 10                 # Certainty of HD input
+k_z = 10                    # Certainty of HD input
 tau = 1
 
 sigma_N = 0
@@ -55,8 +56,9 @@ def generate_frames():
     prev_angle = np.inf
     frames_since_detection = 1
 
-    rotation_thread = threading.Thread(target=random_rotation, args=(60,), daemon=True)
-    rotation_thread.start()
+    if ROBOT_TURN:
+        rotation_thread = threading.Thread(target=random_rotation, args=(60,), daemon=True)
+        rotation_thread.start()
 
 
     while True:
@@ -116,19 +118,16 @@ def generate_frames():
                 cv2.circle(output, center, radius, (0, 255, 0), 2)   # outline
                 cv2.circle(output, center, 2, (0, 0, 255), 3)        # center dot
 
-                if MODE == "CKF":
-                    angle = filter.run_CircKF(prev_angle=prev_angle,frames_since_detection=frames_since_detection, c=c)
-                elif MODE == "RNN":
-                    angle = filter.run_RNN(prev_angle=prev_angle,frames_since_detection=frames_since_detection, c=c)
+
+                angle = filter.run_exp_step(prev_angle=prev_angle,frames_since_detection=frames_since_detection, c=c)
 
                 frames_since_detection = 1
                 prev_angle = angle
 
         else:
-            if MODE == "CKF":
-                filter.run_CircKF()
-            elif MODE == "RNN":
-                filter.run_RNN()
+
+            filter.run_exp_step()
+
 
             frames_since_detection += 1
 
