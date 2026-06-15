@@ -26,8 +26,6 @@ class CKF:
 
 
 
-
-
     def kalman_step(self, z=0, dy=0, k_z=0, k_v=0):
         '''
         compute single Euler–Maruyama step of Circular Kalman filter, appends direction and certainty estimates
@@ -47,17 +45,19 @@ class CKF:
             a = a + az
             b = b + bz
             mu, kappa = self.euclidean_to_polar(a, b)
+        else:
+            mu, kappa = self.mu[-1], self.kappa[-1]
 
         # prediction (include increment observations)
         if k_v != 0:
             dmu_pred = k_v / (self.kappa_phi + k_v) * dy
         else:
             dmu_pred = 0
-        dkappa_pred = - 1 / 2 * 1 / (self.kappa_phi + k_v) * self.kappa[-1] * self.f_kappa(kappa) * self.dt
+        dkappa_pred = - 1 / 2 * 1 / (self.kappa_phi + k_v) * kappa * self.f_kappa(kappa) * self.dt
 
-        mu_out = self.mu[-1] + dmu_pred
+        mu_out = mu + dmu_pred
         mu_out = ((mu_out + np.pi) % (2 * np.pi)) - np.pi  # mu in[-pi,pi]
-        kappa_out = self.kappa[-1] + dkappa_pred
+        kappa_out = kappa + dkappa_pred
 
         self.mu.append(mu_out)
         self.kappa.append(kappa_out)
