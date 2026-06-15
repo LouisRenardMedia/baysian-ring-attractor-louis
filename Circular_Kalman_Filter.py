@@ -91,44 +91,6 @@ class CKF:
             angle = None
         return angle
 
-    def vM_Projection(mu, kappa, kappa_phi, z=None, kappa_z=0, dy=None, kappa_v=0, dt=0.01):
-        """" A single step of the circular Kalman filter, using Euler-Maruyama.
-
-        Input:
-        mu          - mean estimate before update
-        kappa       - certainty estimate before update
-        kappa_phi   - inverse diffusion constant of hidden state process
-        z           - HD observation
-        kappa_z     - reliability of single HD observation (notation different from manuscript!)
-        dy          - increment observation
-        kappa_v     - precision of increment observation
-        dt          - time step
-
-        Output:
-        mu_out      - mean estimate after update
-        kappa_out   - certainty estimate after update """
-
-        # update (on natural parameters -> robust in discrete time)
-        if kappa_z != 0:
-            az, bz = polar_to_euclidean(kappa_z, z)
-            a, b = polar_to_euclidean(kappa, mu)
-            a = a + az
-            b = b + bz
-            mu, kappa = euclidean_to_polar(a, b)
-
-        # prediction (include increment observations)
-        if kappa_v != 0:
-            dmu_pred = kappa_v / (kappa_phi + kappa_v) * dy
-        else:
-            dmu_pred = 0
-        dkappa_pred = - 1 / 2 * 1 / (kappa_phi + kappa_v) * kappa * self.f_kappa(kappa) * dt
-
-        mu_out = mu + dmu_pred
-        mu_out = ((mu_out + np.pi) % (2 * np.pi)) - np.pi  # mu in[-pi,pi]
-        kappa_out = kappa + dkappa_pred
-
-        return (mu_out, kappa_out)
-
     def polar_to_euclidean(self, r, phi):
         """ Converts a polar coordinate with radius r and angle phi to Cartesian coordinates. """
         x = r * np.cos(phi)
