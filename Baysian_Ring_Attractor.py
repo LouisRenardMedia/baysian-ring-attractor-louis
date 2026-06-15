@@ -6,7 +6,28 @@ from angle_utils import calc_angle
 class Ring_Attractor:
 
     def __init__(self, N, dt, tau, kappa_phi, k_v, k_z, w_const, w_quad, kappa_0, phi_0, stoch_corr):
+        '''
+        initialize activity with mean phi_0 and certainty kappa_0
 
+        Fields:
+        N           - number of neurons
+        dt          - time step
+        tau         - decay time constant
+        k_z         - HD observation certainty
+        k_v         - angular velocity observation certainty
+        w_const     - uniform excitatory connection strength applied between all neurons
+        w_quad      - quadratic weight
+        phi_0       - initial mean estimate
+        kappa_0     - initial certainty estimate
+        stoch_corr  - stochastic correction (additional decay due to Ito conversion)
+        I_ext       - external input (computer through xi_fun_inv())
+        mu[]        - array containing mean direction history
+        kappa[]     - array containing certainty history
+        r[]         - array containing activity vector history
+        W_sym       - symetrical recurrent connectivity exciting neurons close together
+        W_asym      - Asymmetric recurrent connectivity moving the bump around with angular velocity
+        W_const     - uniform connectivity matrix
+        '''
         self.N = N
         self.dt = dt
         self.tau = tau
@@ -19,7 +40,10 @@ class Ring_Attractor:
         self.phi_0 = phi_0
         self.stoch_corr = stoch_corr
 
-        self.I_ext = self.xi_fun_inv(k_z * dt)
+        if k_z == 0:
+            self.I_ext = 0
+        else:
+            self.I_ext = self.xi_fun_inv(k_z * dt)
 
         self.mu = [phi_0]
         self.kappa = [kappa_0]
@@ -33,12 +57,14 @@ class Ring_Attractor:
 
 
         # vector of preferred HD
-        self.phi = np.linspace(-np.pi, np.pi - (2 * np.pi) / N, N, endpoint=False)
+        self.phi = np.linspace(-np.pi, np.pi, N, endpoint=False)
 
         # Set up weight matrix
         diff = self.phi[:, None] - self.phi[None, :]  # shape (N, N)
         self.W_sym = w_sym * (2 / N) * np.cos(diff)
+
         self.W_asym = (2 / N) * np.sin(diff) * w_asym
+
         self.W_const = 1 / N * np.ones((N, N)) * w_const
 
         # init activities
@@ -51,17 +77,9 @@ class Ring_Attractor:
         approximate the circKF.
 
         Input:
-        dt          - time step
-        w_sym      - even recurrent connectivity
-        w_asym       - odd recurrent connectivity
-        tau         - decay time constant
-        w_quad      - quadratic weight
-        stoch_corr  - stochastic correction (additional decay due to Ito conversion)
         dy          - increment observation
-
-        Output:
-        mu      - mean estimate after update
-        kappa   - certainty estimate after update """
+        z           - HD observations
+        """
 
         f_act = lambda x: np.maximum(0, x)
 
