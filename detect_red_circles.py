@@ -1,3 +1,4 @@
+import csv
 import time
 
 from flask import Flask, Response
@@ -5,6 +6,9 @@ import cv2
 import numpy as np
 from collections import deque
 import angle_utils
+import random
+import threading
+from robot_toy import _set_motors, stop, SPIN_SPEED
 
 from scipy.spatial.distance import euclidean
 from start_cam import UnwarpCamera
@@ -12,30 +16,31 @@ import Baysian_Ring_Attractor
 
 import Circular_Kalman_Filter
 
-from circularFiltering import vM_Projection
-import robot_toy
-
 app = Flask(__name__)
 cam = UnwarpCamera()
 #cam.start_stream(port=8080)
 
 USE_SMOOTHING = True    # Toggle on or off for circle position averaging over history
-MODE = "RNN"
+MODE = "CKF"
+
+log_file = open('rnn_estimates.csv', 'w', newline='')
+log_writer = csv.writer(log_file)
+log_writer.writerow(['timestamp', 'mu', 'kappa'])
 
 # Buffer to make detection stable
 circle_history = deque(maxlen=5)
 
-N = 30                      # Neuron count
-k_v = 5              # certainty of angular velocity input
-kappa_phi = 5.0              # Diffusion parameter (inverse so high number is low diffusion)
+N = 64                      # Neuron count
+k_v = 2              # certainty of angular velocity input
+kappa_phi = 0.5              # Diffusion parameter (inverse so high number is low diffusion)
 k_z = 10                 # Certainty of HD input
-tau = 0.5
+tau = 1
 
 sigma_N = 0
 phi_0 = 0
-kappa_0 = 1
-w_const = 1
-w_quad = 0.2
+kappa_0 = 10
+w_const = 0
+w_quad = 0.25
 stoch_corr = 0
 
 dt=1/30             # 1/fps
@@ -49,6 +54,9 @@ def generate_frames():
 
     prev_angle = np.inf
     frames_since_detection = 1
+
+    rotation_thread = threading.Thread(target=random_rotation, args=(60,), daemon=True)
+    rotation_thread.start()
 
 
     while True:
@@ -92,7 +100,7 @@ def generate_frames():
         else:
             circle_history.append([])
 
-        
+
         # Only draw if detected in at least 3 of the last 5 frames
         recent_circles = [c for c in circle_history if len(c) > 0]
         if len(recent_circles) >= 3:
@@ -101,14 +109,14 @@ def generate_frames():
                 display_circles = get_smoothed_circle(recent_circles)
             else:
                 display_circles = recent_circles[-1]
-           
+
             for c in display_circles: #TODO this loop does not really make sense to have multiple circles
                 center = (c[0], c[1])
                 radius = c[2]
                 cv2.circle(output, center, radius, (0, 255, 0), 2)   # outline
                 cv2.circle(output, center, 2, (0, 0, 255), 3)        # center dot
 
-                if MODE == "KF":
+                if MODE == "CKF":
                     angle = filter.run_CircKF(prev_angle=prev_angle,frames_since_detection=frames_since_detection, c=c)
                 elif MODE == "RNN":
                     angle = filter.run_RNN(prev_angle=prev_angle,frames_since_detection=frames_since_detection, c=c)
@@ -117,26 +125,26 @@ def generate_frames():
                 prev_angle = angle
 
         else:
-            if MODE == "KF":
+            if MODE == "CKF":
                 filter.run_CircKF()
             elif MODE == "RNN":
                 filter.run_RNN()
 
             frames_since_detection += 1
 
+
+        # Log CSV file
+        try:
+            log_writer.writerow([time.time(), filter.mu[-1], filter.kappa[-1]])
+            log_file.flush()
+        except Exception as e:
+            print("CSV ERROR:", repr(e))
+
+
         # HD indicator — top right corner
         if len(filter.mu) > 1:
             output = draw_hd_indicator(output, filter.mu[-1], filter.kappa[-1])
-     ################ Robot looking for red ball #############
-            # if mean_[-1]<-0.05:
-            #     robot_toy._set_motors(-1600,1600)
-            #     time.sleep(0.04)
-            #     robot_toy.stop()
-            # elif mean_[-1]>0.05:
-            #     robot_toy._set_motors(1600, -1600)
-            #     time.sleep(0.04)
-            #     robot_toy.stop()
-        ###########################################################
+
 
         # Small red mask overlay in top-left corner
         mask_resized = cv2.resize(red_mask, (320, 50))
@@ -269,6 +277,26 @@ def get_smoothed_circle(recent_circles):
 
     return np.array([[avg_x_circ, avg_y, avg_radius]])
 
+def random_rotation(duration_total=60):
+    """
+    Randomly spins the robot left/right for duration_total seconds.
+    Runs in a thread so it doesn't block main logging loop.
+    """
+    end_time = time.time() + duration_total
+
+    while time.time() < end_time:
+        # random direction
+        direction = random.choice([-1, 1])  # -1 = left, 1 = right
+        speed = random.randint(800, SPIN_SPEED)
+        spin_duration = random.uniform(0.5, 2.0)
+
+        _set_motors(-direction * speed, direction * speed)
+        time.sleep(spin_duration)
+
+        stop()
+        time.sleep(random.uniform(0.1, 0.4))  # brief pause
+
+    stop()
     
 @app.route('/')
 def index():
