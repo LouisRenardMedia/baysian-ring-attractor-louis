@@ -9,30 +9,38 @@ import angle_utils
 import random
 import threading
 from robot_toy import _set_motors, stop, SPIN_SPEED
+import Recorder
 
 from scipy.spatial.distance import euclidean
 from start_cam import UnwarpCamera
 import Baysian_Ring_Attractor
 
 import Circular_Kalman_Filter
+from wait_for_start import wait_for_start
+
 
 app = Flask(__name__)
 cam = UnwarpCamera()
 #cam.start_stream(port=8080)
 
 USE_SMOOTHING = True    # Toggle on or off for circle position averaging over history
-MODE = "CKF"            # "CKF" for circular kalman filter and "RNN" for baysian ring attractor
-ROBOT_TURN = False
+MODE = "RNN"            # "CKF" for circular kalman filter and "RNN" for baysian ring attractor
+ROBOT_TURN = True
+REALTIMESYNC = True
+STARTSYNC = False
 
 log_file = open('rnn_estimates.csv', 'w', newline='')
 log_writer = csv.writer(log_file)
 log_writer.writerow(['timestamp', 'mu', 'kappa'])
 
+if REALTIMESYNC:
+    recorder = Recorder.Recorder(cam)
+
 # Buffer to make detection stable
 circle_history = deque(maxlen=5)
 
-N = 64                      # Neuron count
-k_v = 2                 # certainty of angular velocity input
+N = 30                      # Neuron count
+k_v = 2               # certainty of angular velocity input
 kappa_phi = 0.5              # Diffusion parameter (inverse so high number is low diffusion)
 k_z = 10                    # Certainty of HD input
 tau = 1
@@ -40,11 +48,12 @@ tau = 1
 sigma_N = 0
 phi_0 = 0
 kappa_0 = 10
-w_const = 0
-w_quad = 0.25
+w_const = 5.0
+w_quad = 2
 stoch_corr = 0
 
-dt=1/30             # 1/fps
+dt=1/30  # 1/fps
+
 
 
 def generate_frames():
@@ -53,18 +62,26 @@ def generate_frames():
     elif MODE == "RNN":
         filter = Baysian_Ring_Attractor.Ring_Attractor(N, dt, tau, kappa_phi, k_v, k_z, w_const, w_quad, kappa_0, phi_0, stoch_corr)
 
-    prev_angle = np.inf
-    frames_since_detection = 1
+    if STARTSYNC:
+        t_start = wait_for_start()  # blocks until signal received
 
     if ROBOT_TURN:
         rotation_thread = threading.Thread(target=random_rotation, args=(60,), daemon=True)
         rotation_thread.start()
 
+    prev_angle = np.inf
+    frames_since_detection = 1
 
     while True:
-        success, frame = cam.read()
-        if not success:
-            break
+        if REALTIMESYNC:
+            frame, time_stamp, frames_since_detection = recorder.get()
+            if frame is None:
+                continue
+        else:
+            success, frame = cam.read()
+            if not success:
+                print("Camera read failed")
+                break
 
         output = frame.copy()
 
@@ -127,14 +144,18 @@ def generate_frames():
         else:
 
             filter.run_exp_step()
-
-
             frames_since_detection += 1
+            if REALTIMESYNC:
+                recorder.frame_count_set(frames_since_detection)
+
 
 
         # Log CSV file
         try:
-            log_writer.writerow([time.time(), filter.mu[-1], filter.kappa[-1]])
+            if REALTIMESYNC:
+                log_writer.writerow([time_stamp, filter.mu[-1], filter.kappa[-1]])
+            else:
+                log_writer.writerow([time.time(), filter.mu[-1], filter.kappa[-1]])
             log_file.flush()
         except Exception as e:
             print("CSV ERROR:", repr(e))
@@ -286,7 +307,7 @@ def random_rotation(duration_total=60):
     while time.time() < end_time:
         # random direction
         direction = random.choice([-1, 1])  # -1 = left, 1 = right
-        speed = random.randint(800, SPIN_SPEED)
+        speed = random.randint(1200, SPIN_SPEED)
         spin_duration = random.uniform(0.5, 2.0)
 
         _set_motors(-direction * speed, direction * speed)

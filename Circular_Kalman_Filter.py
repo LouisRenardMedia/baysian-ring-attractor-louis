@@ -66,11 +66,11 @@ class CKF:
         '''
         Run one step of the circKF depending on the parameters inputed.
 
-        prev_angle: angle of previously detected circle
-        dt:         time step
-        c:          circle array containing x co-ordinate necessery for angle caluclation
+        prev_angle:                 angle of previously detected circle
+        frames_since_detection:     no. of frames since circle was last detected, used to smooth out angular velocity over empty frames
+        c:                          circle array containing x co-ordinate necessery for angle caluclation
 
-        return: angle, angle of detected circle, only used when calling with a circle detected
+        return: angle (angle of detected circle, only used when calling with a circle detected)
         '''
 
         # When a circle is detected, pass information to circKF call
@@ -82,7 +82,7 @@ class CKF:
 
                 self.kalman_step(angle, dy, k_z=self.k_z, k_v=self.k_v)
 
-            else:
+            else: # on first iteration calculate angle and run the model with no input
                 self.kalman_step(k_v=0, k_z=0)
 
         else:

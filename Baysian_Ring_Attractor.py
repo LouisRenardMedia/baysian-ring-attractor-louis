@@ -72,7 +72,7 @@ class Ring_Attractor:
 
 
 
-    def RNN_step(self, dy=0, z=0, input=1):
+    def RNN_step(self, dy=0, z=None):
         """" Runs a recurrent neural network dynamics, with parameters matched to
         approximate the circKF.
 
@@ -85,12 +85,16 @@ class Ring_Attractor:
 
         # set up all-to-all summation
         M = np.pi / self.N * np.ones([self.N, self.N])
+        z_cancel = 1
+        if z is None:
+            z=0
+            z_cancel = 0
 
         # add Wiener process if there is neural noise
         # if sigma_N != 0:
-        #     dW = np.sqrt(dt) * np.random.randn(int(T / dt), N)
+        #     dW = np.sqrt(dt) * np.random.randn(int(T / dt), N) not array needed
         # else:
-        #     dW = np.zeros((int(T / dt), N))
+        #     dW = 0
 
         # run network filter
         W = self.W_sym + self.W_asym * (dy / self.dt) + self.W_const
@@ -101,8 +105,8 @@ class Ring_Attractor:
                   - 1 / self.tau * self.r[-1] * self.dt  # decay
                   + np.dot(W, self.r[-1]) * self.dt  # angular velocity integration, recurrent stabilization
                   - self.w_quad * np.dot(M, f_act(self.r[-1])) * self.r[-1] * self.dt  # quadratic inhibition
-                  + input * self.I_ext * np.cos(self.phi - z)))  # absolute heading info (external input)
-        # + sigma_N * dW[i]))
+                  + z_cancel * self.I_ext * np.cos(self.phi - z)))  # absolute heading info (external input)
+        # + sigma_N * dW))
 
 
         # decode stochastic variables
@@ -114,12 +118,20 @@ class Ring_Attractor:
         mu = np.arctan2(theta[1], theta[0])
         kappa = np.linalg.norm(theta)
 
-
-
         self.mu.append(mu)
         self.kappa.append(kappa)
 
     def run_exp_step(self, prev_angle=None, frames_since_detection=1, c=None):
+        '''
+        Run one step of the circKF depending on the parameters inputed.
+
+        prev_angle:                 angle of previously detected circle
+        frames_since_detection:     no. of frames since circle was last detected, used to smooth out angular velocity over empty frames
+        c:                          circle array containing x co-ordinate necessery for angle caluclation
+
+        return: angle (angle of detected circle, only used when calling with a circle detected)
+        '''
+
         if c is not None:
             angle = calc_angle(c[0])
 
@@ -128,11 +140,10 @@ class Ring_Attractor:
                             2 * np.pi) - np.pi) / frames_since_detection  # Wrapped ngular displacement in last frame
                 self.RNN_step(dy=dy, z=angle)
 
-            else:
-                self.RNN_step(input=0)
+            else: # on first iteration calculate angle and run the model with no input
+                self.RNN_step()
         else:
-
-            self.RNN_step(input=0)
+            self.RNN_step()
             angle = None
 
         return angle
