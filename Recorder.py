@@ -1,6 +1,9 @@
 import threading
 import time
 
+import Distance
+import IMUReader
+
 
 class Recorder:
     def __init__(self, cap):
@@ -14,6 +17,7 @@ class Recorder:
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
         self.frames_since_detection = 0
+
 
     def _run(self):
         while not self._stop.is_set():

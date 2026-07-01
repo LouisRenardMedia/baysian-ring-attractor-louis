@@ -51,33 +51,44 @@ class Ring_Attractor:
 
         self.r = []
 
-        w_asym = k_v / (kappa_phi + k_v)
-        w_sym = 1 / tau + 1 / (kappa_phi + k_v)
-
-
-
         # vector of preferred HD
         self.phi = np.linspace(-np.pi, np.pi, N, endpoint=False)
 
         # Set up weight matrix
         diff = self.phi[:, None] - self.phi[None, :]  # shape (N, N)
+
+
+
+        self.W_asym = []
+        if np.isscalar(k_v):
+            kappa_v = [k_v]
+        else:
+            kappa_v = list(k_v)
+
+        k_v_total = sum(kappa_v)
+        w_asym = [k_v / (kappa_phi + k_v_total) for k_v in kappa_v]
+        w_sym = 1 / tau + 1 / (kappa_phi + k_v_total)
+
+        for i in range(len(kappa_v)):
+            self.W_asym.append((2 / N) * np.sin(diff) * w_asym[i])
+
         self.W_sym = w_sym * (2 / N) * np.cos(diff)
-
-        self.W_asym = (2 / N) * np.sin(diff) * w_asym
-
         self.W_const = 1 / N * np.ones((N, N)) * w_const
+
+
+
+
 
         # init activities
         self.r.append(kappa_0 * np.cos(self.phi - phi_0))
 
 
-
-    def RNN_step(self, dy=0, z=None):
+    def step(self, dy=0, z=None):
         """" Runs a recurrent neural network dynamics, with parameters matched to
         approximate the circKF.
 
         Input:
-        dy          - increment observation
+        dy          - angular velocity
         z           - HD observations
         """
 
@@ -89,7 +100,9 @@ class Ring_Attractor:
         if z is None:
             z=0
             z_cancel = 0
-
+        if dy is None:
+            dy = 0
+        print(dy)
         # add Wiener process if there is neural noise
         # if sigma_N != 0:
         #     dW = np.sqrt(dt) * np.random.randn(int(T / dt), N) not array needed
@@ -97,7 +110,11 @@ class Ring_Attractor:
         #     dW = 0
 
         # run network filter
-        W = self.W_sym + self.W_asym * (dy / self.dt) + self.W_const
+        if np.isscalar(dy):
+            dy = [dy]
+        W = self.W_sym + self.W_const
+        for i in range(len(dy)):
+            W += self.W_asym[i] * dy[i]
 
 
         self.r.append((self.r[-1]
@@ -118,35 +135,11 @@ class Ring_Attractor:
         mu = np.arctan2(theta[1], theta[0])
         kappa = np.linalg.norm(theta)
 
+
         self.mu.append(mu)
         self.kappa.append(kappa)
 
-    def run_exp_step(self, prev_angle=None, frames_since_detection=1, c=None):
-        '''
-        Run one step of the circKF depending on the parameters inputed.
 
-        prev_angle:                 angle of previously detected circle
-        frames_since_detection:     no. of frames since circle was last detected, used to smooth out angular velocity over empty frames
-        c:                          circle array containing x co-ordinate necessery for angle caluclation
-
-        return: angle (angle of detected circle, only used when calling with a circle detected)
-        '''
-
-        if c is not None:
-            angle = calc_angle(c[0])
-
-            if prev_angle != np.inf:
-                dy = (((prev_angle - angle) + np.pi) % (
-                            2 * np.pi) - np.pi) / frames_since_detection  # Wrapped ngular displacement in last frame
-                self.RNN_step(dy=dy, z=angle)
-
-            else: # on first iteration calculate angle and run the model with no input
-                self.RNN_step()
-        else:
-            self.RNN_step()
-            angle = None
-
-        return angle
 
     def A_Bessel(self, kappa):
         """Computes the ratio of Bessel functions."""

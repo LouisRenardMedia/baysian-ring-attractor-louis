@@ -26,7 +26,7 @@ class CKF:
 
 
 
-    def kalman_step(self, z=0, dy=0, k_z=0, k_v=0):
+    def step(self, dy=0, z=None):
         '''
         compute single Euler–Maruyama step of Circular Kalman filter, appends direction and certainty estimates
         to mu array and kappa array fields
@@ -39,8 +39,8 @@ class CKF:
         '''
 
         # update (on natural parameters -> robust in discrete time)
-        if k_z != 0:
-            az, bz = self.polar_to_euclidean(k_z, z)
+        if z != None:
+            az, bz = self.polar_to_euclidean(self.k_z, z)
             a, b = self.polar_to_euclidean(self.kappa[-1], self.mu[-1])
             a = a + az
             b = b + bz
@@ -49,11 +49,11 @@ class CKF:
             mu, kappa = self.mu[-1], self.kappa[-1]
 
         # prediction (include increment observations)
-        if k_v != 0:
-            dmu_pred = k_v / (self.kappa_phi + k_v) * dy
+        if dy != 0:
+            dmu_pred = self.k_v / (self.kappa_phi + self.k_v) * dy
         else:
             dmu_pred = 0
-        dkappa_pred = - 1 / 2 * 1 / (self.kappa_phi + k_v) * kappa * self.f_kappa(kappa) * self.dt
+        dkappa_pred = - 1 / 2 * 1 / (self.kappa_phi + self.k_v) * kappa * self.f_kappa(kappa) * self.dt
 
         mu_out = mu + dmu_pred
         mu_out = ((mu_out + np.pi) % (2 * np.pi)) - np.pi  # mu in[-pi,pi]
@@ -62,34 +62,7 @@ class CKF:
         self.mu.append(mu_out)
         self.kappa.append(kappa_out)
 
-    def run_exp_step(self, prev_angle=None, frames_since_detection=1, c=None):
-        '''
-        Run one step of the circKF depending on the parameters inputed.
 
-        prev_angle:                 angle of previously detected circle
-        frames_since_detection:     no. of frames since circle was last detected, used to smooth out angular velocity over empty frames
-        c:                          circle array containing x co-ordinate necessery for angle caluclation
-
-        return: angle (angle of detected circle, only used when calling with a circle detected)
-        '''
-
-        # When a circle is detected, pass information to circKF call
-        if c is not None:
-            angle = calc_angle(c[0])
-
-            if prev_angle != np.inf:
-                dy = (((prev_angle - angle) + np.pi) % (2 * np.pi) - np.pi) / frames_since_detection  # Wrapped angular displacement in last frame
-
-                self.kalman_step(angle, dy, k_z=self.k_z, k_v=self.k_v)
-
-            else: # on first iteration calculate angle and run the model with no input
-                self.kalman_step(k_v=0, k_z=0)
-
-        else:
-            # Setting k_v and k_z to 0 ignores any incoming information in the absence of a circle
-            self.kalman_step(k_v=0, k_z=0)
-            angle = None
-        return angle
 
     def polar_to_euclidean(self, r, phi):
         """ Converts a polar coordinate with radius r and angle phi to Cartesian coordinates. """

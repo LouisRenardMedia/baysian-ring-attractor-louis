@@ -1,4 +1,5 @@
 import csv
+import queue
 import time
 
 from flask import Flask, Response
@@ -8,9 +9,10 @@ from collections import deque
 import angle_utils
 import random
 import threading
-from robot_toy import _set_motors, stop, SPIN_SPEED
-import Recorder
 
+from IMUReader import IMUReader
+from robot_toy import _set_motors, stop, SPIN_SPEED, main
+import Recorder
 from scipy.spatial.distance import euclidean
 from start_cam import UnwarpCamera
 import Baysian_Ring_Attractor
@@ -25,35 +27,38 @@ cam = UnwarpCamera()
 
 USE_SMOOTHING = True    # Toggle on or off for circle position averaging over history
 MODE = "RNN"            # "CKF" for circular kalman filter and "RNN" for baysian ring attractor
-ROBOT_TURN = True
+ROBOT_TURN = False
 REALTIMESYNC = True
 STARTSYNC = False
+ROBOT_CONTROL = False
 
 log_file = open('rnn_estimates.csv', 'w', newline='')
 log_writer = csv.writer(log_file)
 log_writer.writerow(['timestamp', 'mu', 'kappa'])
-
 if REALTIMESYNC:
     recorder = Recorder.Recorder(cam)
 
+
 # Buffer to make detection stable
 circle_history = deque(maxlen=5)
+mu = deque(maxlen=1)
 
 N = 30                      # Neuron count
-k_v = 2               # certainty of angular velocity input
-kappa_phi = 0.5              # Diffusion parameter (inverse so high number is low diffusion)
+k_v = [3,0.5]              # certainty of angular velocity input
+kappa_phi = 0.001              # Diffusion parameter (inverse so high number is low diffusion)
 k_z = 10                    # Certainty of HD input
 tau = 1
 
 sigma_N = 0
 phi_0 = 0
 kappa_0 = 10
-w_const = 5.0
-w_quad = 2
+w_const = 0
+w_quad = 1/2.5
 stoch_corr = 0
 
 dt=1/30  # 1/fps
 
+imu = IMUReader(phi_0)
 
 
 def generate_frames():
@@ -68,13 +73,16 @@ def generate_frames():
     if ROBOT_TURN:
         rotation_thread = threading.Thread(target=random_rotation, args=(60,), daemon=True)
         rotation_thread.start()
+    if ROBOT_CONTROL:
+        control_thread = threading.Thread(target=main, args=(), daemon=True)
+        control_thread.start()
 
     prev_angle = np.inf
     frames_since_detection = 1
 
     while True:
         if REALTIMESYNC:
-            frame, time_stamp, frames_since_detection = recorder.get()
+            frame, time_stamp, frames_since_detection = recorder.get() # dy only comes in if realtimesync is on
             if frame is None:
                 continue
         else:
@@ -82,6 +90,9 @@ def generate_frames():
             if not success:
                 print("Camera read failed")
                 break
+        w, dtheta = imu.get(filter.mu[-1])
+        print(dtheta)
+        dy = [w * frames_since_detection, dtheta/(frames_since_detection*dt)] #collect data from the IMU at a similar time as the frame
 
         output = frame.copy()
 
@@ -135,18 +146,21 @@ def generate_frames():
                 cv2.circle(output, center, radius, (0, 255, 0), 2)   # outline
                 cv2.circle(output, center, 2, (0, 0, 255), 3)        # center dot
 
+                target_pixel = center[1]+radius
+                imu.distanceTracker.update(target_pixel)
 
-                angle = filter.run_exp_step(prev_angle=prev_angle,frames_since_detection=frames_since_detection, c=c)
+                angle = angle_utils.calc_angle(c[0])
+                filter.step(dy=dy, z=angle)
 
                 frames_since_detection = 1
                 prev_angle = angle
 
         else:
 
-            filter.run_exp_step()
-            frames_since_detection += 1
-            if REALTIMESYNC:
-                recorder.frame_count_set(frames_since_detection)
+            filter.step(dy=dy)
+            # frames_since_detection += 1
+            # if REALTIMESYNC:
+            #     recorder.frame_count_set(frames_since_detection)
 
 
 
@@ -163,7 +177,7 @@ def generate_frames():
 
         # HD indicator — top right corner
         if len(filter.mu) > 1:
-            output = draw_hd_indicator(output, filter.mu[-1], filter.kappa[-1])
+            output = draw_hd_indicator(output, filter.mu[-1], filter.kappa[-1], imu.getdistance())
 
 
         # Small red mask overlay in top-left corner
@@ -180,7 +194,7 @@ def generate_frames():
         )
 
 
-def draw_hd_indicator(frame, mean, kappa, size=80):
+def draw_hd_indicator(frame, mean, kappa, distance, size=80):
     """
     Draws a circular HD indicator in the top-right corner.
     - The arrow direction encodes mean (mu)
@@ -242,6 +256,19 @@ def draw_hd_indicator(frame, mean, kappa, size=80):
     # --- kappa text ---
     cv2.putText(frame, f'k={kappa:.1f}', (cx - 20, cy + size + 16),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+    # --- distance text ---
+    text_y = cy + size + 16
+
+    if distance is not None:
+        cv2.putText(
+            frame,
+            f'd={distance:.2f} m',
+            (cx - 110, text_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (100, 60, 64),
+            2,
+        )
 
     return frame
 
@@ -317,7 +344,11 @@ def random_rotation(duration_total=60):
         time.sleep(random.uniform(0.1, 0.4))  # brief pause
 
     stop()
-    
+
+def navigate():
+    main()
+
+
 @app.route('/')
 def index():
     return "<h1>Stable Red Circle Stream</h1><img src='/video_feed'>"
