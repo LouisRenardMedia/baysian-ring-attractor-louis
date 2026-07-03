@@ -16,7 +16,7 @@ import Recorder
 from scipy.spatial.distance import euclidean
 from start_cam import UnwarpCamera
 import Baysian_Ring_Attractor
-
+from visual_compass import VisualCompass
 import Circular_Kalman_Filter
 from wait_for_start import wait_for_start
 
@@ -30,11 +30,11 @@ MODE = "RNN"            # "CKF" for circular kalman filter and "RNN" for baysian
 ROBOT_TURN = False
 REALTIMESYNC = True
 STARTSYNC = False
-ROBOT_CONTROL = False
+ROBOT_CONTROL = True
 
 log_file = open('rnn_estimates.csv', 'w', newline='')
 log_writer = csv.writer(log_file)
-log_writer.writerow(['timestamp', 'mu', 'kappa'])
+log_writer.writerow(['timestamp', 'mu', 'kappa', 'IMU_omega', 'IMU_compass', 'opt_flow'])
 if REALTIMESYNC:
     recorder = Recorder.Recorder(cam)
 
@@ -42,9 +42,10 @@ if REALTIMESYNC:
 # Buffer to make detection stable
 circle_history = deque(maxlen=5)
 mu = deque(maxlen=1)
+vc = VisualCompass()
 
 N = 30                      # Neuron count
-k_v = [3,0.5]              # certainty of angular velocity input
+k_v = [3,0.5,3]              # certainty of angular velocity input
 kappa_phi = 0.001              # Diffusion parameter (inverse so high number is low diffusion)
 k_z = 10                    # Certainty of HD input
 tau = 1
@@ -65,7 +66,7 @@ def generate_frames():
     if MODE == "CKF":
         filter = Circular_Kalman_Filter.CKF(kappa_phi,dt,k_z,k_v)
     elif MODE == "RNN":
-        filter = Baysian_Ring_Attractor.Ring_Attractor(N, dt, tau, kappa_phi, k_v, k_z, w_const, w_quad, kappa_0, phi_0, stoch_corr)
+        filter = Baysian_Ring_Attractor.BayesianRingAttractor(N, dt, tau, kappa_phi, k_v, k_z, w_const, w_quad, kappa_0, phi_0, stoch_corr)
 
     if STARTSYNC:
         t_start = wait_for_start()  # blocks until signal received
@@ -91,9 +92,9 @@ def generate_frames():
                 print("Camera read failed")
                 break
         w, dtheta = imu.get(filter.mu[-1])
-        print(dtheta)
-        dy = [w * frames_since_detection, dtheta/(frames_since_detection*dt)] #collect data from the IMU at a similar time as the frame
-
+        opt_flow_dis = vc.update(frame)
+        dy = np.array([w * frames_since_detection, dtheta/dt, opt_flow_dis/dt]) #collect data from the IMU at a similar time as the frame
+        dy = np.clip(dy, -8,8)
         output = frame.copy()
 
         # Convert to HSV and mask red
@@ -167,7 +168,7 @@ def generate_frames():
         # Log CSV file
         try:
             if REALTIMESYNC:
-                log_writer.writerow([time_stamp, filter.mu[-1], filter.kappa[-1]])
+                log_writer.writerow([time_stamp, filter.mu[-1], filter.kappa[-1], dy[0], dy[1], dy[2]])
             else:
                 log_writer.writerow([time.time(), filter.mu[-1], filter.kappa[-1]])
             log_file.flush()

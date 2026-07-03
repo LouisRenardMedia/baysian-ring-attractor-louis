@@ -3,7 +3,7 @@ from scipy.optimize import root_scalar
 from scipy.special import i0, i1
 from angle_utils import calc_angle
 
-class Ring_Attractor:
+class BayesianRingAttractor:
 
     def __init__(self, N, dt, tau, kappa_phi, k_v, k_z, w_const, w_quad, kappa_0, phi_0, stoch_corr):
         '''
@@ -75,10 +75,6 @@ class Ring_Attractor:
         self.W_sym = w_sym * (2 / N) * np.cos(diff)
         self.W_const = 1 / N * np.ones((N, N)) * w_const
 
-
-
-
-
         # init activities
         self.r.append(kappa_0 * np.cos(self.phi - phi_0))
 
@@ -98,11 +94,10 @@ class Ring_Attractor:
         M = np.pi / self.N * np.ones([self.N, self.N])
         z_cancel = 1
         if z is None:
-            z=0
+            z = 0
             z_cancel = 0
         if dy is None:
             dy = 0
-        print(dy)
         # add Wiener process if there is neural noise
         # if sigma_N != 0:
         #     dW = np.sqrt(dt) * np.random.randn(int(T / dt), N) not array needed
@@ -115,7 +110,6 @@ class Ring_Attractor:
         W = self.W_sym + self.W_const
         for i in range(len(dy)):
             W += self.W_asym[i] * dy[i]
-
 
         self.r.append((self.r[-1]
                   - self.stoch_corr * self.r[-1] * self.dt  # stochastic correction
