@@ -79,7 +79,7 @@ class BayesianRingAttractor:
         self.r.append(kappa_0 * np.cos(self.phi - phi_0))
 
 
-    def step(self, dy=0, z=None):
+    def step(self, dy=0, z=None, k_z=None):
         """" Runs a recurrent neural network dynamics, with parameters matched to
         approximate the circKF.
 
@@ -98,6 +98,13 @@ class BayesianRingAttractor:
             z_cancel = 0
         if dy is None:
             dy = 0
+
+        if k_z is not None:
+            if k_z == 0:
+                self.I_ext = 0
+            else:
+                self.I_ext = self.xi_fun_inv(k_z * self.dt)
+
         # add Wiener process if there is neural noise
         # if sigma_N != 0:
         #     dW = np.sqrt(dt) * np.random.randn(int(T / dt), N) not array needed
