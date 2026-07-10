@@ -32,7 +32,7 @@ MODE = "RNN"            # "CKF" for circular kalman filter and "RNN" for baysian
 ROBOT_TURN = False
 REALTIMESYNC = True
 STARTSYNC = False
-ROBOT_CONTROL = False
+ROBOT_CONTROL = True
 
 log_file = open('rnn_estimates.csv', 'w', newline='')
 log_writer = csv.writer(log_file)
@@ -150,7 +150,7 @@ def generate_frames():
         stream.stop()
         stream.close()
 
-def sound_to_von_mises(sound_curve, h=0.1, s=5):
+def sound_to_von_mises(sound_curve, h=0.2, s=5):
     mu = -(np.radians(np.argmax(sound_curve)-1) - np.pi)
     min_s = ItoDb(np.partition(sound_curve, s)[s-1])
     max_s = ItoDb(np.partition(sound_curve, -s)[-s])

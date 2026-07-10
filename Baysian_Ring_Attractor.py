@@ -111,7 +111,7 @@ class BayesianRingAttractor:
         # else:
         #     dW = 0
 
-        # run network filter
+        # run filter
         if np.isscalar(dy):
             dy = [dy]
         W = self.W_sym + self.W_const

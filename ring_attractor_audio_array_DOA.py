@@ -81,9 +81,9 @@ def update_das():
         4,
         radius,
         45,
-        [500, 2400],
+        [400, 4200],
         np.linspace(0, 360, 361),
-        show=False,
+        show=True,
     )
 
     return spatial_resp

@@ -16,6 +16,7 @@ import scipy.signal as signal
 from scipy.interpolate import interp1d
 from scipy.signal import stft, hilbert
 import time
+import matplotlib.pyplot as plt
 
 # Audio processing functions
 
