@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.optimize import root_scalar
-from scipy.special import i0, i1
+from scipy.special import ive
 from angle_utils import calc_angle
 
 class BayesianRingAttractor:
@@ -55,7 +55,7 @@ class BayesianRingAttractor:
         self.phi = np.linspace(-np.pi, np.pi, N, endpoint=False)
 
         # Set up weight matrix
-        diff = self.phi[:, None] - self.phi[None, :]  # shape (N, N)
+        self.diff = self.phi[:, None] - self.phi[None, :]  # shape (N, N)
 
 
 
@@ -70,9 +70,9 @@ class BayesianRingAttractor:
         w_sym = 1 / tau + 1 / (kappa_phi + k_v_total)
 
         for i in range(len(kappa_v)):
-            self.W_asym.append((2 / N) * np.sin(diff) * w_asym[i])
+            self.W_asym.append((2 / N) * np.sin(self.diff) * w_asym[i])
 
-        self.W_sym = w_sym * (2 / N) * np.cos(diff)
+        self.W_sym = w_sym * (2 / N) * np.cos(self.diff)
         self.W_const = 1 / N * np.ones((N, N)) * w_const
 
         # init activities
@@ -114,7 +114,17 @@ class BayesianRingAttractor:
         # run filter
         if np.isscalar(dy):
             dy = [dy]
+
         W = self.W_sym + self.W_const
+        # print("kv: ", self.k_v)
+
+        k_v_total = sum(self.k_v)
+        w_asym = [k_vi / (self.kappa_phi + k_v_total) for k_vi in self.k_v]
+
+        self.W_asym = []
+        for i in range(len(self.k_v)):
+            self.W_asym.append((2 / self.N) * np.sin(self.diff) * w_asym[i])
+
         for i in range(len(dy)):
             W += self.W_asym[i] * dy[i]
 
@@ -144,16 +154,59 @@ class BayesianRingAttractor:
 
     def A_Bessel(self, kappa):
         """Computes the ratio of Bessel functions."""
-        r = i1(kappa) / i0(kappa)
+        r = ive(1, kappa) / ive(0, kappa)
         return r
 
     def xi_fun_inv(self, dt):
         """Computes the inverse of the ratio of Bessel functions by root-finding."""
+        if not np.isfinite(dt) or dt <= 0:
+            return 0
+
         f = lambda alpha: alpha * self.A_Bessel(alpha) - dt
-        sol = root_scalar(f, bracket=[0.001, 50], method='brentq')
+        lower = 0.0
+        upper = max(50.0, dt + 1.0)
+        while f(upper) < 0:
+            upper *= 2
+
+        sol = root_scalar(f, bracket=[lower, upper], method='brentq')
         alpha = sol.root
         return alpha
 
+    def update_weights(self, omega, eta=0.07, sigma=0.05, k_vt=None, floor_frac=0.05):
+        """
+        Multiplicative Hebbian trust update
+        for 3 angular-velocity sensors.
+
+        k       : array [k_v1, k_v2, k_v3]  current weights
+        omega   : array [w1, w2, w3]        current sensor readings
+        eta     : learning rate (log-domain)
+        sigma   : agreement bandwidth (how close = "close")
+        k_vt    : target total weight (defaults to current sum of k)
+        floor_frac : minimum weight, as a fraction of k_vt, before
+                     the update is applied (keeps recovery possible)
+        """
+        k_v = self.k_v
+
+        if k_vt is None:
+            k_vt = sum(k_v)
+
+        # pairwise agreement in [0,1], 1 = identical readings
+        a12 = np.exp(-((omega[0] - omega[1]) ** 2) / (2 * sigma ** 2))
+        a13 = np.exp(-((omega[0] - omega[2]) ** 2) / (2 * sigma ** 2))
+        a23 = np.exp(-((omega[1] - omega[2]) ** 2) / (2 * sigma ** 2))
+
+        # net agreement signal per sensor (positive = reinforced, negative = penalized)
+        s = np.array([
+            a12 / 2 + a13 / 2 - a23,  # sensor 1: rewarded by agreeing w/ 2,3; hurt if 2,3 agree without it
+            a12 / 2 - a13 + a23 / 2,  # sensor 2
+            -a12 + a13 / 2 + a23 / 2  # sensor 3
+        ])
+
+        k_v = np.maximum(k_v, floor_frac * k_vt)  # floor before exponentiating
+        k_v = k_v * np.exp(eta * s)  # multiplicative update
+        k_v *= k_vt / k_v.sum()  # renormalize to conserve total
+        self.k_v = k_v
+        print(k_v)
 
 
 

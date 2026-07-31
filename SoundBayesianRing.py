@@ -10,9 +10,11 @@ import angle_utils
 import random
 import threading
 import sounddevice as sd
+from scipy.optimize import root_scalar
+from scipy.special import ive
 
 from IMUReader import IMUReader
-from robot_toy import _set_motors, stop, SPIN_SPEED, main
+from robot_toy import _set_motors, stop, SPIN_SPEED, main as robot_main, experimentPath
 import Recorder
 from scipy.spatial.distance import euclidean
 from start_cam import UnwarpCamera
@@ -32,7 +34,8 @@ MODE = "RNN"            # "CKF" for circular kalman filter and "RNN" for baysian
 ROBOT_TURN = False
 REALTIMESYNC = True
 STARTSYNC = False
-ROBOT_CONTROL = True
+ROBOT_CONTROL = False
+ROBOT_PATH = False
 
 log_file = open('rnn_estimates.csv', 'w', newline='')
 log_writer = csv.writer(log_file)
@@ -47,7 +50,7 @@ mu = deque(maxlen=1)
 vc = VisualCompass()
 
 N = 30                      # Neuron count
-k_v = [3,0.5,3]              # certainty of angular velocity input
+k_v = [2,2,2]              # certainty of angular velocity input
 kappa_phi = 0.001              # Diffusion parameter (inverse so high number is low diffusion)
 k_z0 = 10                    # Certainty of HD input
 tau = 1
@@ -55,7 +58,7 @@ sigma_N = 0
 phi_0 = 0
 kappa_0 = 10
 w_const = 0
-w_quad = 1/2.5
+w_quad = 1/6
 stoch_corr = 0
 
 dt=1/30  # 1/fps
@@ -95,8 +98,10 @@ def generate_frames():
     if ROBOT_CONTROL:
         control_thread = threading.Thread(target=main, args=(), daemon=True)
         control_thread.start()
+    if ROBOT_PATH:
+        experimentPath()
 
-    prev_angle = np.inf
+
     frames_since_detection = 1
     try:
         while True:
@@ -111,11 +116,17 @@ def generate_frames():
                     break
             w, dtheta = imu.get(filter.mu[-1])
             opt_flow_dis = vc.update(frame)
+            sound_curve = update_das()
+
             dy = np.array([w * frames_since_detection, dtheta/dt, opt_flow_dis/dt]) #collect data from the IMU at a similar time as the frame
             dy = np.clip(dy, -8,8)
+
+            dy_uncorrected = dy * 1/frames_since_detection #otherwise distance between measurements are also scaled by missed frames
+
+            filter.update_weights(dy_uncorrected)
             output = frame.copy()
 
-            sound_curve = update_das()
+
             if sound_curve is not None:
                 mu, k_z = sound_to_von_mises(sound_curve)
                 filter.step(dy=dy, z=mu, k_z=k_z)
@@ -125,7 +136,7 @@ def generate_frames():
             # Log CSV file
             try:
                 if REALTIMESYNC:
-                    log_writer.writerow([time_stamp, filter.mu[-1], filter.kappa[-1], dy[0], dy[1], dy[2]])
+                    log_writer.writerow([time_stamp, filter.mu[-1], filter.kappa[-1], dy[0]/frames_since_detection, dy[1]/frames_since_detection, dy[2]/frames_since_detection])
                 else:
                     log_writer.writerow([time.time(), filter.mu[-1], filter.kappa[-1]])
                 log_file.flush()
@@ -152,14 +163,49 @@ def generate_frames():
 
 def sound_to_von_mises(sound_curve, h=0.2, s=5):
     mu = -(np.radians(np.argmax(sound_curve)-1) - np.pi)
-    min_s = ItoDb(np.partition(sound_curve, s)[s-1])
-    max_s = ItoDb(np.partition(sound_curve, -s)[-s])
+    min_s = max(45,ItoDb(np.partition(sound_curve, s)[s-1]))
+
+    max_s = max(45,ItoDb(np.partition(sound_curve, -s)[-s]))
+    # print(min_s, max_s)
 
     k_z = (h*(max_s - min_s))**2
 
     k_z = min(10, k_z)
     print('mu is::::',mu,k_z)
     return mu, k_z
+
+
+def fit_von_mises(intensity):
+    """
+    intensity - array of intensity/power values evenly spaced over 360 degrees
+
+    Returns mu (radians, in -pi to pi), kappa (concentration)
+    """
+    intensity = np.asarray(intensity, dtype=float)
+    total = np.sum(intensity)
+
+    if total <= 0 or not np.isfinite(total):
+        return 0.0, 0.0
+
+    N = len(intensity)
+    theta = np.linspace(0, 2 * np.pi, N, endpoint=False)
+
+    p = intensity / total
+
+    C = np.sum(p * np.cos(theta))
+    S = np.sum(p * np.sin(theta))
+    R = np.sqrt(C ** 2 + S ** 2)
+    R = float(np.clip(R, 0.0, 1.0 - 1e-12))
+
+    mu = np.arctan2(S, C)  # radians, in (-pi, pi]
+
+    if R < 1e-6:
+        kappa = 0.0
+    else:
+        f = lambda k: ive(1, k) / ive(0, k) - R
+        kappa = root_scalar(f, bracket=[1e-6, 1e5], method='brentq').root
+    print("Mu is:", mu,kappa)
+    return mu, kappa
 
 def ItoDb(I):
     return 10*np.log10(I/10**-12)

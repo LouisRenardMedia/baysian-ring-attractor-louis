@@ -113,6 +113,7 @@ class VisualCompass:
             self.I_r = I_p                       # previous becomes new reference
             self.ref_id = self.frame_idx - 1
             self.ref_pano = prev_pano
+            self.last_shift = 0
 
         self.r_rc = r_rc
         self.heading = self.w_r + r_rc          # accumulated orientation (kept, not returned)
