@@ -1,5 +1,4 @@
 import csv
-import queue
 import time
 
 from flask import Flask, Response
@@ -32,7 +31,7 @@ REALTIMESYNC = True
 STARTSYNC = False
 ROBOT_CONTROL = True
 
-log_file = open('rnn_estimates.csv', 'w', newline='')
+log_file = open('../rnn_estimates.csv', 'w', newline='')
 log_writer = csv.writer(log_file)
 log_writer.writerow(['timestamp', 'mu', 'kappa', 'IMU_omega', 'IMU_compass', 'opt_flow'])
 if REALTIMESYNC:

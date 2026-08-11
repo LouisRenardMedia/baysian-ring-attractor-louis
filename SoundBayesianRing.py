@@ -14,7 +14,16 @@ from scipy.optimize import root_scalar
 from scipy.special import ive
 
 from IMUReader import IMUReader
-from robot_toy import _set_motors, stop, SPIN_SPEED, main as robot_main, experimentPath
+from robot_toy import (
+    _set_motors,
+    stop,
+    SPIN_SPEED,
+    main as robot_main,
+    experimentPath,
+    start_go_home_control,
+    stop_go_home_control,
+    submit_go_home_target,
+)
 import Recorder
 from scipy.spatial.distance import euclidean
 from start_cam import UnwarpCamera
@@ -35,11 +44,12 @@ ROBOT_TURN = False
 REALTIMESYNC = True
 STARTSYNC = False
 ROBOT_CONTROL = False
+ROBOT_GO_HOME_CONTROL = True
 ROBOT_PATH = False
 
 log_file = open('rnn_estimates.csv', 'w', newline='')
 log_writer = csv.writer(log_file)
-log_writer.writerow(['timestamp', 'mu', 'kappa', 'IMU_omega', 'IMU_compass', 'opt_flow'])
+log_writer.writerow(['timestamp', 'mu', 'kappa', 'IMU_omega', 'IMU_compass', 'opt_flow','IMU_w_kv', 'compass_kv', 'opt_kv'])
 if REALTIMESYNC:
     recorder = Recorder.Recorder(cam)
 
@@ -50,13 +60,13 @@ mu = deque(maxlen=1)
 vc = VisualCompass()
 
 N = 30                      # Neuron count
-k_v = [2,2,2]              # certainty of angular velocity input
+k_v = [0.774,0.766,	0.460]              # certainty of angular velocity input
 kappa_phi = 0.001              # Diffusion parameter (inverse so high number is low diffusion)
 k_z0 = 10                    # Certainty of HD input
 tau = 1
 sigma_N = 0
 phi_0 = 0
-kappa_0 = 10
+kappa_0 = 1.5
 w_const = 0
 w_quad = 1/6
 stoch_corr = 0
@@ -96,10 +106,14 @@ def generate_frames():
         rotation_thread = threading.Thread(target=random_rotation, args=(60,), daemon=True)
         rotation_thread.start()
     if ROBOT_CONTROL:
-        control_thread = threading.Thread(target=main, args=(), daemon=True)
+        control_thread = threading.Thread(target=robot_main, args=(), daemon=True)
         control_thread.start()
+    if ROBOT_GO_HOME_CONTROL:
+        start_go_home_control()
     if ROBOT_PATH:
-        experimentPath()
+        experiment_thread = threading.Thread(target=experimentPath, args=(), daemon=True)
+        experiment_thread.start()
+
 
 
     frames_since_detection = 1
@@ -133,10 +147,13 @@ def generate_frames():
             else:
                 filter.step(dy=dy)
 
+            if ROBOT_GO_HOME_CONTROL:
+                submit_go_home_target(filter.mu[-1],filter.kappa[-1])
+
             # Log CSV file
             try:
                 if REALTIMESYNC:
-                    log_writer.writerow([time_stamp, filter.mu[-1], filter.kappa[-1], dy[0]/frames_since_detection, dy[1]/frames_since_detection, dy[2]/frames_since_detection])
+                    log_writer.writerow([time_stamp, filter.mu[-1], filter.kappa[-1], dy[0]/frames_since_detection, dy[1]/frames_since_detection, dy[2]/frames_since_detection,filter.k_v[0],filter.k_v[1], filter.k_v[2]])
                 else:
                     log_writer.writerow([time.time(), filter.mu[-1], filter.kappa[-1]])
                 log_file.flush()
@@ -158,10 +175,12 @@ def generate_frames():
     except KeyboardInterrupt:
         print("Stopping the audio stream.")
     finally:
+        if ROBOT_GO_HOME_CONTROL:
+            stop_go_home_control()
         stream.stop()
         stream.close()
 
-def sound_to_von_mises(sound_curve, h=0.2, s=5):
+def sound_to_von_mises(sound_curve, h=0.1, s=5):
     mu = -(np.radians(np.argmax(sound_curve)-1) - np.pi)
     min_s = max(45,ItoDb(np.partition(sound_curve, s)[s-1]))
 

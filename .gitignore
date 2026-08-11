@@ -18,3 +18,7 @@ Thumbs.db
 
 # Robot controls
 robot_toy.py
+
+#calibration
+calib_result.npz
+
