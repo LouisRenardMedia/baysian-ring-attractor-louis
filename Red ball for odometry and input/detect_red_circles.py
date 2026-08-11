@@ -14,7 +14,7 @@ from robot_toy import _set_motors, stop, SPIN_SPEED, main
 import Recorder
 from scipy.spatial.distance import euclidean
 from Camera.start_cam import UnwarpCamera
-import Baysian_Ring_Attractor
+import Bayesian_Ring_Attractor
 from visual_compass import VisualCompass
 import Circular_Kalman_Filter
 from wait_for_start import wait_for_start

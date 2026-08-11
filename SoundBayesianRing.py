@@ -6,7 +6,6 @@ from flask import Flask, Response
 import cv2
 import numpy as np
 from collections import deque
-import angle_utils
 import random
 import threading
 import sounddevice as sd
@@ -25,12 +24,10 @@ from robot_toy import (
     submit_go_home_target,
 )
 import Recorder
-from scipy.spatial.distance import euclidean
 from Camera.start_cam import UnwarpCamera
-import Baysian_Ring_Attractor
+import Bayesian_Ring_Attractor
 from visual_compass import VisualCompass
 import Circular_Kalman_Filter
-from wait_for_start import wait_for_start
 from ring_attractor_audio_array_DOA import update_das, get_card, audio_callback
 
 
@@ -42,7 +39,6 @@ USE_SMOOTHING = True    # Toggle on or off for circle position averaging over hi
 MODE = "RNN"            # "CKF" for circular kalman filter and "RNN" for baysian ring attractor
 ROBOT_TURN = False
 REALTIMESYNC = True
-STARTSYNC = False
 ROBOT_CONTROL = False
 ROBOT_GO_HOME_CONTROL = True
 ROBOT_PATH = False
@@ -98,9 +94,6 @@ def generate_frames():
         filter = Circular_Kalman_Filter.CKF(kappa_phi,dt,k_z0,k_v)
     elif MODE == "RNN":
         filter = Baysian_Ring_Attractor.BayesianRingAttractor(N, dt, tau, kappa_phi, k_v, k_z0, w_const, w_quad, kappa_0, phi_0, stoch_corr)
-
-    if STARTSYNC:
-        t_start = wait_for_start()  # blocks until signal received
 
     if ROBOT_TURN:
         rotation_thread = threading.Thread(target=random_rotation, args=(60,), daemon=True)
@@ -193,39 +186,6 @@ def sound_to_von_mises(sound_curve, h=0.1, s=5):
     print('mu is::::',mu,k_z)
     return mu, k_z
 
-
-def fit_von_mises(intensity):
-    """
-    intensity - array of intensity/power values evenly spaced over 360 degrees
-
-    Returns mu (radians, in -pi to pi), kappa (concentration)
-    """
-    intensity = np.asarray(intensity, dtype=float)
-    total = np.sum(intensity)
-
-    if total <= 0 or not np.isfinite(total):
-        return 0.0, 0.0
-
-    N = len(intensity)
-    theta = np.linspace(0, 2 * np.pi, N, endpoint=False)
-
-    p = intensity / total
-
-    C = np.sum(p * np.cos(theta))
-    S = np.sum(p * np.sin(theta))
-    R = np.sqrt(C ** 2 + S ** 2)
-    R = float(np.clip(R, 0.0, 1.0 - 1e-12))
-
-    mu = np.arctan2(S, C)  # radians, in (-pi, pi]
-
-    if R < 1e-6:
-        kappa = 0.0
-    else:
-        f = lambda k: ive(1, k) / ive(0, k) - R
-        kappa = root_scalar(f, bracket=[1e-6, 1e5], method='brentq').root
-    print("Mu is:", mu,kappa)
-    return mu, kappa
-
 def ItoDb(I):
     return 10*np.log10(I/10**-12)
 
@@ -306,58 +266,6 @@ def draw_hd_indicator(frame, mean, kappa, distance, size=80):
         )
 
     return frame
-
-#UNUSED may be useful if integrating 2+ landmarks
-def get_stable_circles(recent_circles, max_dist=20):
-    all_detections = [c for frame in recent_circles for c in frame]
-    if not all_detections:
-        return []
-
-    groups = []
-    for c in all_detections:
-        matched = False
-        for group in groups:
-            # compare to the first circle in the group
-            if euclidean(c[:2], group[0][:2]) < max_dist:
-                group.append(c)
-                matched = True
-                break
-        if not matched:
-            groups.append([c])
-
-    # only draw groups seen in enough frames
-    stable = []
-    for group in groups:
-        if len(group) >= 2:
-            avg_x = int(np.mean([c[0] for c in group]))
-            avg_y = int(np.mean([c[1] for c in group]))
-            avg_r = int(np.mean([c[2] for c in group]))
-            stable.append((avg_x, avg_y, avg_r))
-
-    return stable
-
-def get_smoothed_circle(recent_circles):
-    """
-    Averages x, y, radius across recent detections to reduce jitter.
-    Reuses the same recent_circles list already built in generate_frames().
-    """
-    if not recent_circles:
-        return None
-
-    all_circles = np.concatenate(recent_circles)
-
-    angles = np.array([angle_utils.calc_angle(c[0]) for c in all_circles])
-    avg_cos = np.mean(np.cos(angles))
-    avg_sin = np.mean(np.sin(angles))
-    avg_angle = np.arctan2(avg_sin, avg_cos)  # back to polar
-
-    # Convert avg_angle back to a pixel x position
-    avg_x_circ = angle_utils.calc_position(avg_angle)
-
-    avg_y      = int(np.mean(all_circles[:, 1]))
-    avg_radius = int(np.mean(all_circles[:, 2]))
-
-    return np.array([[avg_x_circ, avg_y, avg_radius]])
 
 def random_rotation(duration_total=60):
     """

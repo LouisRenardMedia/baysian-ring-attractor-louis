@@ -1,7 +1,6 @@
 import numpy as np
 from scipy.optimize import root_scalar
 from scipy.special import ive
-from angle_utils import calc_angle
 
 class BayesianRingAttractor:
 
@@ -80,7 +79,7 @@ class BayesianRingAttractor:
 
 
     def step(self, dy=0, z=None, k_z=None):
-        """" Runs a recurrent neural network dynamics, with parameters matched to
+        """" Runs recurrent neural network dynamics, with parameters matched to
         approximate the circKF.
 
         Input:
