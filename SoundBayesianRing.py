@@ -294,7 +294,7 @@ def random_rotation(duration_total=60):
 
 @app.route('/')
 def index():
-    return "<h1>Stable Red Circle Stream</h1><img src='/video_feed'>"
+    return "<h1>Heading estimation live</h1><img src='/video_feed'>"
 
 @app.route('/video_feed')
 def video_feed():
