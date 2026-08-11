@@ -93,7 +93,7 @@ def generate_frames():
     if MODE == "CKF":
         filter = Circular_Kalman_Filter.CKF(kappa_phi,dt,k_z0,k_v)
     elif MODE == "RNN":
-        filter = Baysian_Ring_Attractor.BayesianRingAttractor(N, dt, tau, kappa_phi, k_v, k_z0, w_const, w_quad, kappa_0, phi_0, stoch_corr)
+        filter = Bayesian_Ring_Attractor.BayesianRingAttractor(N, dt, tau, kappa_phi, k_v, k_z0, w_const, w_quad, kappa_0, phi_0, stoch_corr)
 
     if ROBOT_TURN:
         rotation_thread = threading.Thread(target=random_rotation, args=(60,), daemon=True)
