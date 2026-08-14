@@ -31,7 +31,10 @@ class BayesianRingAttractor:
         self.dt = dt
         self.tau = tau
         self.kappa_phi = kappa_phi
-        self.k_v = k_v
+        if np.isscalar(k_v):
+            self.k_v = np.array([k_v], dtype=float)
+        else:
+            self.k_v = np.array(k_v, dtype=float)
         self.k_z = k_z
         self.w_const = w_const
         self.w_quad = w_quad
@@ -59,16 +62,11 @@ class BayesianRingAttractor:
 
 
         self.W_asym = []
-        if np.isscalar(k_v):
-            kappa_v = [k_v]
-        else:
-            kappa_v = list(k_v)
-
-        k_v_total = sum(kappa_v)
-        w_asym = [k_v / (kappa_phi + k_v_total) for k_v in kappa_v]
+        k_v_total = np.sum(self.k_v)
+        w_asym = [k_v / (kappa_phi + k_v_total) for k_v in self.k_v]
         w_sym = 1 / tau + 1 / (kappa_phi + k_v_total)
 
-        for i in range(len(kappa_v)):
+        for i in range(len(self.k_v)):
             self.W_asym.append((2 / N) * np.sin(self.diff) * w_asym[i])
 
         self.W_sym = w_sym * (2 / N) * np.cos(self.diff)
