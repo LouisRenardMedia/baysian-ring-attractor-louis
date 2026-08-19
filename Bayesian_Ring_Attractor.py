@@ -174,12 +174,12 @@ class BayesianRingAttractor:
         Multiplicative Hebbian trust update
         for 3 angular-velocity sensors.
 
-        k       : array [k_v1, k_v2, k_v3]  current weights
-        omega   : array [w1, w2, w3]        current sensor readings
-        eta     : learning rate (log-domain)
-        sigma   : agreement bandwidth (how close = "close")
-        k_vt    : target total weight (defaults to current sum of k)
-        floor_frac : minimum weight, as a fraction of k_vt, before
+        k_v     - array [k_v1, k_v2, k_v3]  current weights
+        omega   - array [w1, w2, w3]        current sensor readings
+        eta     - learning rate (log-domain)
+        sigma   - agreement bandwidth (how close = "close")
+        k_vt    - target total weight (defaults to current sum of k)
+        floor_frac - minimum weight, as a fraction of k_vt, before
                      the update is applied (keeps recovery possible)
         """
         k_v = self.k_v
