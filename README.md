@@ -112,4 +112,4 @@ The `BayesianRingAttractor` object can be initialized with either one `k_v` valu
 
 The `step()` function will run one step of the model given an angular velocity and an external input. Either of these can simply be omitted and the model run as expected when not receiving an input. A new external input certainty `k_z` can be passed which will update the certainty of the external input.
 
-The `update_weights()` function can be called to dynamically update the weight of each odometry sensor updating `k_v` values accordingly.
+The `update_weights()` function can be called to dynamically update the weight of each odometry sensor updating `k_v` values accordingly. 
