@@ -131,7 +131,7 @@ def generate_frames():
             filter.update_weights(dy_uncorrected)
             output = frame.copy()
 
-            mu, k_z = None, None
+
             if sound_curve is not None:
                 mu, k_z = sound_to_von_mises(sound_curve)
                 filter.step(dy=dy, z=mu, k_z=k_z)
