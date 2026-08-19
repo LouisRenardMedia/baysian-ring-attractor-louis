@@ -9,8 +9,7 @@ from collections import deque
 import random
 import threading
 import sounddevice as sd
-from scipy.optimize import root_scalar
-from scipy.special import ive
+
 
 from IMUReader import IMUReader
 from robot_toy import (
@@ -35,12 +34,11 @@ app = Flask(__name__)
 cam = UnwarpCamera()
 #cam.start_stream(port=8080)
 
-USE_SMOOTHING = True    # Toggle on or off for circle position averaging over history
 MODE = "RNN"            # "CKF" for circular kalman filter and "RNN" for baysian ring attractor
 ROBOT_TURN = False
 REALTIMESYNC = True
-ROBOT_CONTROL = False
-ROBOT_GO_HOME_CONTROL = True
+ROBOT_CONTROL = True
+ROBOT_GO_HOME_CONTROL = False
 ROBOT_PATH = False
 
 log_file = open('rnn_estimates.csv', 'w', newline='')
@@ -133,7 +131,7 @@ def generate_frames():
             filter.update_weights(dy_uncorrected)
             output = frame.copy()
 
-
+            mu, k_z = None, None
             if sound_curve is not None:
                 mu, k_z = sound_to_von_mises(sound_curve)
                 filter.step(dy=dy, z=mu, k_z=k_z)
@@ -183,7 +181,6 @@ def sound_to_von_mises(sound_curve, h=0.1, s=5):
     k_z = (h*(max_s - min_s))**2
 
     k_z = min(10, k_z)
-    print('mu is::::',mu,k_z)
     return mu, k_z
 
 def ItoDb(I):
