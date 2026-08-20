@@ -203,7 +203,6 @@ class BayesianRingAttractor:
         k_v = k_v * np.exp(eta * s)  # multiplicative update
         k_v *= k_vt / k_v.sum()  # renormalize to conserve total
         self.k_v = k_v
-        print(k_v)
 
 
 

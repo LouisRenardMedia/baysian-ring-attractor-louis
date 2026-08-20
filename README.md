@@ -1,6 +1,7 @@
 # Sound Bayesian Ring attractor 
 
 Robot heading and homing experiments using a Bayesian ring attractor. The project combines an omnidirectional camera, visual odometry, IMU readings, microphone-array direction-of-arrival estimates, and optional motor control on a Raspberry Pi robot.
+Refer to `Detailed_documentation.pdf` for more in depth explanations of the project.
 
 ## What This Project Does
 

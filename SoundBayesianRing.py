@@ -35,23 +35,11 @@ cam = UnwarpCamera()
 #cam.start_stream(port=8080)
 
 MODE = "RNN"            # "CKF" for circular kalman filter and "RNN" for baysian ring attractor
-ROBOT_TURN = False
-REALTIMESYNC = True
+ROBOT_TURN = False      # Random turn sequence for the robot
+REALTIMESYNC = True     # Real time step reading from dedicated recorder, log timesteps
 ROBOT_CONTROL = True
 ROBOT_GO_HOME_CONTROL = False
 ROBOT_PATH = False
-
-log_file = open('rnn_estimates.csv', 'w', newline='')
-log_writer = csv.writer(log_file)
-log_writer.writerow(['timestamp', 'mu', 'kappa', 'IMU_omega', 'IMU_compass', 'opt_flow','IMU_w_kv', 'compass_kv', 'opt_kv'])
-if REALTIMESYNC:
-    recorder = Recorder.Recorder(cam)
-
-
-# Buffer to make detection stable
-circle_history = deque(maxlen=5)
-mu = deque(maxlen=1)
-vc = VisualCompass()
 
 N = 30                      # Neuron count
 k_v = [0.774,0.766,	0.460]              # certainty of angular velocity input
@@ -67,7 +55,16 @@ stoch_corr = 0
 
 dt=1/30  # 1/fps
 
+log_file = open('rnn_estimates.csv', 'w', newline='')
+log_writer = csv.writer(log_file)
+log_writer.writerow(['timestamp', 'mu', 'kappa', 'IMU_omega', 'IMU_compass', 'opt_flow','IMU_w_kv', 'compass_kv', 'opt_kv'])
+if REALTIMESYNC:
+    recorder = Recorder.Recorder(cam)
+
+
+vc = VisualCompass()
 imu = IMUReader(phi_0)
+
 # Start the audio stream
 fs = 16000  # sampling frequency
 print(f"Sampling Frequency: {fs} Hz")
@@ -171,7 +168,7 @@ def generate_frames():
         stream.stop()
         stream.close()
 
-def sound_to_von_mises(sound_curve, h=0.1, s=5):
+def sound_to_von_mises(sound_curve, h=1, s=5):
     mu = -(np.radians(np.argmax(sound_curve)-1) - np.pi)
     min_s = max(45,ItoDb(np.partition(sound_curve, s)[s-1]))
 
